@@ -38,7 +38,7 @@ sshctl sh -c hostnamectl -p *** -r 192.168.170.111
 在远程主机上执行本地脚本
 
 ```shell
-sshctl sh -f  script.sh -p *** -r 192.168.170.111
+sshctl sh -f script.sh -p *** -r 192.168.170.111
 ```
 
 在远程主机上执行本地从本地pipe接受到的脚本
