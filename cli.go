@@ -1,14 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/cobra"
+	"io"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
@@ -20,16 +22,21 @@ const (
 	password   = "password"
 	timeout    = "timeout"
 	port       = "port"
+	filename   = "file"
+	command    = "command"
 )
 
 func init() {
 	rootCmd.PersistentFlags().StringP(username, "u", "root", "ssh username")
-	rootCmd.PersistentFlags().StringP(password, "p", "", "ssh password")
+	rootCmd.PersistentFlags().StringP(password, "p", "", "ssh password (required)")
 	rootCmd.PersistentFlags().IntP(timeout, "t", 0, "Task timeout (in seconds)")
-	rootCmd.PersistentFlags().StringSliceP(remoteHost, "r", []string{}, "ssh server remote addr")
+	rootCmd.PersistentFlags().StringSliceP(remoteHost, "r", []string{}, "ssh server remote addr (required)")
 	rootCmd.PersistentFlags().Int(port, 22, "ssh server port")
 	_ = rootCmd.MarkPersistentFlagRequired(remoteHost)
 	_ = rootCmd.MarkPersistentFlagRequired(password)
+
+	execShellCmd.Flags().StringP(filename, "f", "", "Script to execute")
+	execShellCmd.Flags().StringP(command, "c", "", "Command to execute")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(getFileCmd)
@@ -68,9 +75,6 @@ var getFileCmd = &cobra.Command{
 	Long:    `Usage: get remoteFile localFile`,
 	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		t := time.Now()
-		defer func(t time.Time) { fmt.Printf("It takes %s\n", time.Since(t)) }(t)
-
 		op, err := getSftpClient(cmd)
 		if err != nil {
 			fmt.Println(err)
@@ -91,9 +95,6 @@ var putFileCmd = &cobra.Command{
 	Long:    `Usage: put localFile remoteFile`,
 	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		t := time.Now()
-		defer func(t time.Time) { fmt.Printf("It takes %s\n", time.Since(t)) }(t)
-
 		op, err := getSftpClient(cmd)
 		if err != nil {
 			fmt.Println(err)
@@ -112,24 +113,67 @@ var execShellCmd = &cobra.Command{
 	Aliases: []string{"exec", "shell", "bash"},
 	Short:   "Put the script on the remote host for execution",
 	Long:    `Usage: sh script`,
-	Args:    cobra.ExactArgs(1),
+	//Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		op, err := getSftpClient(cmd)
-		if err != nil {
-			fmt.Println(err)
+		c := cmd.Flag(command).Value.String()
+		f := cmd.Flag(filename).Value.String()
+
+		var reader *bufio.Reader
+		switch {
+		case `` != c && f == ``:
+			if c == "-" {
+				reader = bufio.NewReader(os.Stdin)
+				break
+			}
+			reader = bufio.NewReader(strings.NewReader(c))
+		case `` == c && f != ``:
+			if f == "-" {
+				reader = bufio.NewReader(os.Stdin)
+				break
+			}
+			fReadr, err := os.Open(f)
+			if err != nil {
+				fmt.Printf("Error opening file %s. err: %v\n", f, err)
+				return
+			}
+			reader = bufio.NewReader(fReadr)
+		default:
+			fmt.Printf("%s and %s cannot be used at the same time\n", command, filename)
 			return
 		}
 
-		err = op.Shell(args[0])
+		op, err := getSftpClient(cmd)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("getSftpClient->", err)
+			return
+		}
+
+		var buf bytes.Buffer
+		for {
+			var bs = make([]byte, 1<<10)
+			n, err := reader.Read(bs)
+			if err == nil {
+				buf.Write(bs[:n])
+			} else {
+				if err == io.EOF {
+					buf.Write(bs[:n])
+					break
+				} else {
+					fmt.Println("reader.Read->", err)
+					return
+				}
+			}
+		}
+
+		err = op.Shell(buf.Bytes())
+		if err != nil {
+			fmt.Println("Shell->", err)
 		}
 	},
 }
 
 func getSftpClient(cmd *cobra.Command) (SSHAction, error) {
-	var result = new(multierror.Error)
-
+	var result *multierror.Error
 	sshPort, err := strconv.Atoi(cmd.Flag(port).Value.String())
 	result = multierror.Append(result, err)
 	taskTimeout, err := strconv.Atoi(cmd.Flag(timeout).Value.String())
