@@ -104,7 +104,7 @@ func (c *sshClient) execShell(script []byte) error {
 
 	session.Stdin = bytes.NewReader(script)
 	session.Stdout = os.Stdout
-	err = session.Shell()
+	err = session.Start("/bin/bash -i")
 	if err != nil {
 		return fmt.Errorf("session.Shell->%w", err)
 	}

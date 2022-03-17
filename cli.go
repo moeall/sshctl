@@ -27,14 +27,9 @@ const (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringP(username, "u", "root", "ssh username")
-	rootCmd.PersistentFlags().StringP(password, "p", "", "ssh password (required)")
-	rootCmd.PersistentFlags().IntP(timeout, "t", 0, "Task timeout (in seconds)")
-	rootCmd.PersistentFlags().StringSliceP(remoteHost, "r", []string{}, "ssh server remote addr (required)")
-	rootCmd.PersistentFlags().Int(port, 22, "ssh server port")
-	_ = rootCmd.MarkPersistentFlagRequired(remoteHost)
-	_ = rootCmd.MarkPersistentFlagRequired(password)
-
+	initCmdPersistentFlags(getFileCmd)
+	initCmdPersistentFlags(putFileCmd)
+	initCmdPersistentFlags(execShellCmd)
 	execShellCmd.Flags().StringP(filename, "f", "", "Script to execute")
 	execShellCmd.Flags().StringP(command, "c", "", "Command to execute")
 
@@ -42,6 +37,16 @@ func init() {
 	rootCmd.AddCommand(getFileCmd)
 	rootCmd.AddCommand(putFileCmd)
 	rootCmd.AddCommand(execShellCmd)
+}
+
+func initCmdPersistentFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringP(username, "u", "root", "ssh username")
+	cmd.PersistentFlags().StringP(password, "p", "", "ssh password (required)")
+	cmd.PersistentFlags().IntP(timeout, "t", 0, "Task timeout (in seconds)")
+	cmd.PersistentFlags().StringSliceP(remoteHost, "r", []string{}, "ssh server remote addr (required)")
+	cmd.PersistentFlags().Int(port, 22, "ssh server port")
+	_ = cmd.MarkPersistentFlagRequired(remoteHost)
+	_ = cmd.MarkPersistentFlagRequired(password)
 }
 
 func execute() {
